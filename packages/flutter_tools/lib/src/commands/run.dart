@@ -112,11 +112,10 @@ class RunCommand extends RunCommandBase {
     DebuggingOptions options;
 
     if (getBuildMode() != BuildMode.debug) {
-      options = new DebuggingOptions.disabled();
+      options = new DebuggingOptions.disabled(getBuildMode());
     } else {
       options = new DebuggingOptions.enabled(
-        // TODO(devoncarew): Change this to 'getBuildMode() == BuildMode.debug'.
-        checked: argResults['checked'],
+        getBuildMode(),
         startPaused: argResults['start-paused'],
         observatoryPort: debugPort
       );

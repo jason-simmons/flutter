@@ -269,7 +269,7 @@ Future<int> startApp(DriveCommand command, BuildMode buildMode) async {
     mainPath: mainPath,
     route: command.route,
     debuggingOptions: new DebuggingOptions.enabled(
-      checked: buildMode == BuildMode.debug,
+      buildMode,
       startPaused: true,
       observatoryPort: command.debugPort
     ),
