@@ -427,7 +427,7 @@ int _signApk(
 }
 
 // Returns true if the apk is out of date and needs to be rebuilt.
-bool _needsRebuild(String apkPath, String manifest) {
+bool _needsRebuild(String apkPath, String manifest, TargetPlatform platform, BuildMode buildMode) {
   FileStat apkStat = FileStat.statSync(apkPath);
   // Note: This list of dependencies is imperfect, but will do for now. We
   // purposely don't include the .dart files, because we can load those
@@ -447,6 +447,11 @@ bool _needsRebuild(String apkPath, String manifest) {
   }
 
   if (!FileSystemEntity.isFileSync('$apkPath.sha1'))
+    return true;
+
+  String lastBuildType = _getLastBuildType(path.dirname(apkPath));
+  String targetBuildType = getTargetBuildTypeName(platform, buildMode);
+  if (lastBuildType != targetBuildType)
     return true;
 
   return false;
@@ -481,7 +486,7 @@ Future<int> buildAndroid(
   // In debug (JIT) mode, the snapshot lives in the FLX, and we can skip the APK
   // rebuild if none of the resources in the APK are stale.
   // In AOT modes, the snapshot lives in the APK, so the APK must be rebuilt.
-  if (!isAotBuildMode(buildMode) && !force && !_needsRebuild(outputFile, manifest)) {
+  if (!isAotBuildMode(buildMode) && !force && !_needsRebuild(outputFile, manifest, platform, buildMode)) {
     printTrace('APK up to date; skipping build step.');
     return 0;
   }
@@ -551,7 +556,10 @@ Future<int> buildAndroid(
     }
   }
 
-  return _buildApk(platform, buildMode, components, flxPath, keystore, outputFile);
+  int result = _buildApk(platform, buildMode, components, flxPath, keystore, outputFile);
+  if (result == 0)
+    _writeLastBuildType(path.dirname(outputFile), platform, buildMode);
+  return result;
 }
 
 Future<int> buildApk(
@@ -572,4 +580,16 @@ Future<int> buildApk(
   );
 
   return result;
+}
+
+String _getLastBuildType(String buildDirectoryPath) {
+  File lastBuildFile = new File(path.join(buildDirectoryPath, '.build'));
+  return lastBuildFile.existsSync() ? lastBuildFile.readAsStringSync().trim() : null;
+}
+
+void _writeLastBuildType(String buildDirectoryPath, TargetPlatform platform, BuildMode buildMode) {
+  File lastBuildFile = new File(path.join(buildDirectoryPath, '.build'));
+  String buildType = getTargetBuildTypeName(platform, buildMode);
+
+  lastBuildFile.writeAsStringSync('$buildType\n');
 }
