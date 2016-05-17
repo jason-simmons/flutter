@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:convert' show JSON;
 import 'dart:io';
 
 import 'package:path/path.dart' as path;
@@ -449,7 +450,7 @@ bool _needsRebuild(String apkPath, String manifest, TargetPlatform platform, Bui
   if (!FileSystemEntity.isFileSync('$apkPath.sha1'))
     return true;
 
-  String lastBuildType = _getLastBuildType(path.dirname(apkPath));
+  String lastBuildType = _readBuildMeta(path.dirname(apkPath))['targetBuildType'];
   String targetBuildType = getTargetBuildTypeName(platform, buildMode);
   if (lastBuildType != targetBuildType)
     return true;
@@ -558,7 +559,7 @@ Future<int> buildAndroid(
 
   int result = _buildApk(platform, buildMode, components, flxPath, keystore, outputFile);
   if (result == 0)
-    _writeLastBuildType(path.dirname(outputFile), platform, buildMode);
+    _writeBuildMetaEntry(path.dirname(outputFile), 'targetBuildType', getTargetBuildTypeName(platform, buildMode));
   return result;
 }
 
@@ -582,14 +583,16 @@ Future<int> buildApk(
   return result;
 }
 
-String _getLastBuildType(String buildDirectoryPath) {
-  File lastBuildFile = new File(path.join(buildDirectoryPath, '.build'));
-  return lastBuildFile.existsSync() ? lastBuildFile.readAsStringSync().trim() : null;
+Map<String, dynamic> _readBuildMeta(String buildDirectoryPath) {
+  File buildMetaFile = new File(path.join(buildDirectoryPath, 'build_meta.json'));
+  if (buildMetaFile.existsSync())
+    return JSON.decode(buildMetaFile.readAsStringSync());
+  return <String, dynamic>{};
 }
 
-void _writeLastBuildType(String buildDirectoryPath, TargetPlatform platform, BuildMode buildMode) {
-  File lastBuildFile = new File(path.join(buildDirectoryPath, '.build'));
-  String buildType = getTargetBuildTypeName(platform, buildMode);
-
-  lastBuildFile.writeAsStringSync('$buildType\n');
+void _writeBuildMetaEntry(String buildDirectoryPath, String key, dynamic value) {
+  Map<String, dynamic> meta = _readBuildMeta(buildDirectoryPath);
+  meta[key] = value;
+  File buildMetaFile = new File(path.join(buildDirectoryPath, 'build_meta.json'));
+  buildMetaFile.writeAsStringSync(toPrettyJson(meta));
 }
