@@ -226,7 +226,8 @@ void ShellTest::PumpOneFrame(Shell* shell, FrameContent frame_content) {
   // tree pipeline nonempty. Without either of this, the layer tree below
   // won't be rasterized.
   fml::AutoResetWaitableEvent latch;
-  fml::WeakPtr<RuntimeDelegate> runtime_delegate = shell->weak_engine_;
+  fml::TaskRunnerAffineWeakPtr<RuntimeDelegate> runtime_delegate =
+      shell->weak_engine_;
   shell->GetTaskRunners().GetUITaskRunner()->PostTask(
       [&latch, engine = shell->weak_engine_, &frame_content,
        runtime_delegate]() {

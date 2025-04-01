@@ -388,6 +388,9 @@ public class FlutterLoader {
           shellArgs.add("--impeller-antialias-lines");
         }
       }
+      // Start the engine with separate UI and platform threads and then move
+      // the UI task runner to the platform thread after creating the isolate.
+      shellArgs.add("--no-enable-merged-platform-ui-thread");
 
       final String leakVM = isLeakVM(metaData) ? "true" : "false";
       shellArgs.add("--leak-vm=" + leakVM);

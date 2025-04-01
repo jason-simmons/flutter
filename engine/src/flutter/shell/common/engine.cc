@@ -147,7 +147,7 @@ std::unique_ptr<Engine> Engine::Spawn(
 
 Engine::~Engine() = default;
 
-fml::WeakPtr<Engine> Engine::GetWeakPtr() const {
+fml::TaskRunnerAffineWeakPtr<Engine> Engine::GetWeakPtr() const {
   return weak_factory_.GetWeakPtr();
 }
 
@@ -160,11 +160,12 @@ std::shared_ptr<AssetManager> Engine::GetAssetManager() {
   return asset_manager_;
 }
 
-fml::WeakPtr<ImageDecoder> Engine::GetImageDecoderWeakPtr() {
+fml::TaskRunnerAffineWeakPtr<ImageDecoder> Engine::GetImageDecoderWeakPtr() {
   return image_decoder_->GetWeakPtr();
 }
 
-fml::WeakPtr<ImageGeneratorRegistry> Engine::GetImageGeneratorRegistry() {
+fml::TaskRunnerAffineWeakPtr<ImageGeneratorRegistry>
+Engine::GetImageGeneratorRegistry() {
   return image_generator_registry_.GetWeakPtr();
 }
 
@@ -258,6 +259,12 @@ Engine::RunStatus Engine::Run(RunConfiguration configuration) {
             kIsolateChannel, MakeMapping(service_id.value()), nullptr);
     HandlePlatformMessage(std::move(service_id_message));
   }
+
+  // Move the UI task runner to the platform thread.
+  runtime_controller_->SetRootIsolateOwnerToPlatformThread();
+  fml::MessageLoopTaskQueues::GetInstance()->Merge(
+      task_runners_.GetPlatformTaskRunner()->GetTaskQueueId(),
+      task_runners_.GetUITaskRunner()->GetTaskQueueId());
 
   return Engine::RunStatus::Success;
 }

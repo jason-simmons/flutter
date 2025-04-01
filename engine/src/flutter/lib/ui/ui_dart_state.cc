@@ -24,8 +24,9 @@ UIDartState::Context::Context(
     fml::TaskRunnerAffineWeakPtr<SnapshotDelegate> snapshot_delegate,
     fml::WeakPtr<IOManager> io_manager,
     fml::RefPtr<SkiaUnrefQueue> unref_queue,
-    fml::WeakPtr<ImageDecoder> image_decoder,
-    fml::WeakPtr<ImageGeneratorRegistry> image_generator_registry,
+    fml::TaskRunnerAffineWeakPtr<ImageDecoder> image_decoder,
+    fml::TaskRunnerAffineWeakPtr<ImageGeneratorRegistry>
+        image_generator_registry,
     std::string advisory_script_uri,
     std::string advisory_script_entrypoint,
     bool deterministic_rendering_enabled,
@@ -184,12 +185,13 @@ UIDartState::GetSnapshotDelegate() const {
   return context_.snapshot_delegate;
 }
 
-fml::WeakPtr<ImageDecoder> UIDartState::GetImageDecoder() const {
+fml::TaskRunnerAffineWeakPtr<ImageDecoder> UIDartState::GetImageDecoder()
+    const {
   return context_.image_decoder;
 }
 
-fml::WeakPtr<ImageGeneratorRegistry> UIDartState::GetImageGeneratorRegistry()
-    const {
+fml::TaskRunnerAffineWeakPtr<ImageGeneratorRegistry>
+UIDartState::GetImageGeneratorRegistry() const {
   return context_.image_generator_registry;
 }
 
