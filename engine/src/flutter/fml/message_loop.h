@@ -57,6 +57,9 @@ class MessageLoop {
   /// \see fml::MessageLoopTaskQueues
   static TaskQueueId GetCurrentTaskQueueId();
 
+ protected:
+  static thread_local TaskQueueId tls_current_task_queue;
+
  private:
   friend class TaskRunner;
   friend class MessageLoopImpl;

@@ -41,6 +41,13 @@ bool TaskRunnerChecker::RunsOnTheSameThread(TaskQueueId queue_a,
   if (queues->Owns(queue_b, queue_a)) {
     return true;
   }
+
+  TaskQueueId a_owner = queues->GetOwner(queue_a);
+  if (a_owner != TaskQueueId::kUnmerged &&
+      a_owner == queues->GetOwner(queue_b)) {
+    return true;
+  }
+
   return false;
 };
 

@@ -453,6 +453,7 @@ class Shell final : public PlatformView::Delegate,
   /// multiple messages per second indefinitely.
   std::mutex misbehaving_message_channels_mutex_;
   std::set<std::string> misbehaving_message_channels_;
+  const TaskRunners original_task_runners_;
   const TaskRunners task_runners_;
   const fml::RefPtr<fml::RasterThreadMerger> parent_raster_thread_merger_;
   std::shared_ptr<ResourceCacheLimitCalculator>

@@ -16,6 +16,9 @@ namespace fml {
 
 static thread_local std::unique_ptr<MessageLoop> tls_message_loop;
 
+thread_local TaskQueueId MessageLoop::tls_current_task_queue(
+    TaskQueueId::kInvalid);
+
 MessageLoop& MessageLoop::GetCurrent() {
   auto* loop = tls_message_loop.get();
   FML_CHECK(loop != nullptr)
@@ -74,6 +77,9 @@ void MessageLoop::RunExpiredTasksNow() {
 }
 
 TaskQueueId MessageLoop::GetCurrentTaskQueueId() {
+  if (tls_current_task_queue.is_valid()) {
+    return tls_current_task_queue;
+  }
   auto* loop = tls_message_loop.get();
   FML_CHECK(loop != nullptr)
       << "MessageLoop::EnsureInitializedForCurrentThread was not called on "

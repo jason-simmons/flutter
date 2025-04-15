@@ -110,6 +110,7 @@ Engine::Engine(Delegate& delegate,
 
 std::unique_ptr<Engine> Engine::Spawn(
     Delegate& delegate,
+    const TaskRunners& task_runners,
     const PointerDataDispatcherMaker& dispatcher_maker,
     const Settings& settings,
     std::unique_ptr<Animator> animator,
@@ -122,7 +123,7 @@ std::unique_ptr<Engine> Engine::Spawn(
       /*dispatcher_maker=*/dispatcher_maker,
       /*image_decoder_task_runner=*/
       runtime_controller_->GetDartVM()->GetConcurrentWorkerTaskRunner(),
-      /*task_runners=*/task_runners_,
+      /*task_runners=*/task_runners,
       /*settings=*/settings,
       /*animator=*/std::move(animator),
       /*io_manager=*/io_manager,
@@ -131,6 +132,7 @@ std::unique_ptr<Engine> Engine::Spawn(
       /*gpu_disabled_switch=*/gpu_disabled_switch);
   result->runtime_controller_ = runtime_controller_->Spawn(
       /*p_client=*/*result,
+      /*task_runners=*/task_runners,
       /*advisory_script_uri=*/settings.advisory_script_uri,
       /*advisory_script_entrypoint=*/settings.advisory_script_entrypoint,
       /*idle_notification_callback=*/settings.idle_notification_callback,
@@ -265,9 +267,14 @@ Engine::RunStatus Engine::Run(RunConfiguration configuration) {
       Settings::MergedPlatformUIThread::kMergeAfterLaunch) {
     // Move the UI task runner to the platform thread.
     runtime_controller_->SetRootIsolateOwnerToPlatformThread();
-    fml::MessageLoopTaskQueues::GetInstance()->Merge(
-        task_runners_.GetPlatformTaskRunner()->GetTaskQueueId(),
-        task_runners_.GetUITaskRunner()->GetTaskQueueId());
+    fml::MessageLoopTaskQueues* task_queues =
+        fml::MessageLoopTaskQueues::GetInstance();
+    fml::TaskQueueId ui_task_queue_id =
+        task_runners_.GetUITaskRunner()->GetTaskQueueId();
+    task_queues->Unmerge(task_queues->GetOwner(ui_task_queue_id),
+                         ui_task_queue_id);
+    task_queues->Merge(task_runners_.GetPlatformTaskRunner()->GetTaskQueueId(),
+                       ui_task_queue_id);
   }
 
   return Engine::RunStatus::Success;

@@ -64,6 +64,12 @@ enum class FlushType {
 /// \see fml::Wakeable
 class MessageLoopTaskQueues {
  public:
+  struct QueuedTask {
+    QueuedTask(const TaskSource::TopTask& top_task);
+    const TaskQueueId task_queue_id;
+    const fml::closure task;
+  };
+
   // Lifecycle.
 
   static MessageLoopTaskQueues* GetInstance();
@@ -84,7 +90,8 @@ class MessageLoopTaskQueues {
 
   bool HasPendingTasks(TaskQueueId queue_id) const;
 
-  fml::closure GetNextTaskToRun(TaskQueueId queue_id, fml::TimePoint from_time);
+  std::optional<QueuedTask> GetNextTaskToRun(TaskQueueId queue_id,
+                                             fml::TimePoint from_time);
 
   size_t GetNumPendingTasks(TaskQueueId queue_id) const;
 
@@ -131,6 +138,10 @@ class MessageLoopTaskQueues {
   // Returns the subsumed task queue if any or |TaskQueueId::kUnmerged|
   // otherwise.
   std::set<TaskQueueId> GetSubsumedTaskQueueId(TaskQueueId owner) const;
+
+  // Returns the owner of this queue, or |TaskQueueId::kUnmerged| if this
+  // queue is not subsumed.
+  TaskQueueId GetOwner(TaskQueueId subsumed);
 
   void PauseSecondarySource(TaskQueueId queue_id);
 

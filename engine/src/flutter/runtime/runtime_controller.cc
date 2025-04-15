@@ -49,6 +49,7 @@ RuntimeController::RuntimeController(
 
 std::unique_ptr<RuntimeController> RuntimeController::Spawn(
     RuntimeDelegate& p_client,
+    const TaskRunners& task_runners,
     const std::string& advisory_script_uri,
     const std::string& advisory_script_entrypoint,
     const std::function<void(int64_t)>& p_idle_notification_callback,
@@ -60,7 +61,7 @@ std::unique_ptr<RuntimeController> RuntimeController::Spawn(
     fml::TaskRunnerAffineWeakPtr<ImageGeneratorRegistry>
         image_generator_registry,
     fml::TaskRunnerAffineWeakPtr<SnapshotDelegate> snapshot_delegate) const {
-  UIDartState::Context spawned_context{context_.task_runners,
+  UIDartState::Context spawned_context{task_runners,
                                        std::move(snapshot_delegate),
                                        std::move(io_manager),
                                        context_.unref_queue,

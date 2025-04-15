@@ -420,6 +420,7 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
   ///
   std::unique_ptr<Engine> Spawn(
       Delegate& delegate,
+      const TaskRunners& task_runners,
       const PointerDataDispatcherMaker& dispatcher_maker,
       const Settings& settings,
       std::unique_ptr<Animator> animator,

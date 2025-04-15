@@ -42,6 +42,10 @@ TaskQueueEntry::TaskQueueEntry(TaskQueueId created_for_arg)
   task_source = std::make_unique<TaskSource>(created_for);
 }
 
+MessageLoopTaskQueues::QueuedTask::QueuedTask(
+    const TaskSource::TopTask& top_task)
+    : task_queue_id(top_task.task_queue_id), task(top_task.task.GetTask()) {}
+
 MessageLoopTaskQueues* MessageLoopTaskQueues::GetInstance() {
   static MessageLoopTaskQueues* instance = new MessageLoopTaskQueues;
   return instance;
@@ -115,11 +119,12 @@ bool MessageLoopTaskQueues::HasPendingTasks(TaskQueueId queue_id) const {
   return HasPendingTasksUnlocked(queue_id);
 }
 
-fml::closure MessageLoopTaskQueues::GetNextTaskToRun(TaskQueueId queue_id,
-                                                     fml::TimePoint from_time) {
+std::optional<MessageLoopTaskQueues::QueuedTask>
+MessageLoopTaskQueues::GetNextTaskToRun(TaskQueueId queue_id,
+                                        fml::TimePoint from_time) {
   std::lock_guard guard(queue_mutex_);
   if (!HasPendingTasksUnlocked(queue_id)) {
-    return nullptr;
+    return std::nullopt;
   }
   TaskSource::TopTask top = PeekNextTaskUnlocked(queue_id);
 
@@ -130,13 +135,13 @@ fml::closure MessageLoopTaskQueues::GetNextTaskToRun(TaskQueueId queue_id,
   }
 
   if (top.task.GetTargetTime() > from_time) {
-    return nullptr;
+    return std::nullopt;
   }
-  fml::closure invocation = top.task.GetTask();
+  QueuedTask queued_task(top);
   const auto task_source_grade = top.task.GetTaskSourceGrade();
   queue_entries_.at(top.task_queue_id)->task_source->PopTask(task_source_grade);
   tls_task_source_grade.reset(new TaskSourceGradeHolder{task_source_grade});
-  return invocation;
+  return queued_task;
 }
 
 void MessageLoopTaskQueues::WakeUpUnlocked(TaskQueueId queue_id,
@@ -317,6 +322,11 @@ std::set<TaskQueueId> MessageLoopTaskQueues::GetSubsumedTaskQueueId(
     TaskQueueId owner) const {
   std::lock_guard guard(queue_mutex_);
   return queue_entries_.at(owner)->owner_of;
+}
+
+TaskQueueId MessageLoopTaskQueues::GetOwner(TaskQueueId subsumed) {
+  std::lock_guard guard(queue_mutex_);
+  return queue_entries_.at(subsumed)->subsumed_by;
 }
 
 void MessageLoopTaskQueues::PauseSecondarySource(TaskQueueId queue_id) {

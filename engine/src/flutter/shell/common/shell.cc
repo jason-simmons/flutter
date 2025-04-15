@@ -22,6 +22,7 @@
 #include "flutter/fml/make_copyable.h"
 #include "flutter/fml/message_loop.h"
 #include "flutter/fml/paths.h"
+#include "flutter/fml/sub_queue_task_runner.h"
 #include "flutter/fml/trace_event.h"
 #include "flutter/runtime/dart_vm.h"
 #include "flutter/shell/common/base64.h"
@@ -323,6 +324,7 @@ std::unique_ptr<Shell> Shell::CreateShellOnPlatformThread(
                          runtime_stage_backend = DetermineRuntimeStageBackend(
                              platform_view->GetImpellerContext())]() mutable {
         TRACE_EVENT0("flutter", "ShellSetupUISubsystem");
+
         const auto& task_runners = shell->GetTaskRunners();
 
         // The animator is owned by the UI thread but it gets its vsync pulses
@@ -419,6 +421,22 @@ std::unique_ptr<Shell> Shell::CreateWithSnapshot(
   return shell;
 }
 
+TaskRunners CreateEngineTaskRunners(const TaskRunners& task_runners,
+                                    const Settings& settings) {
+  fml::RefPtr<fml::TaskRunner> engine_ui_task_runner;
+  if (settings.merged_platform_ui_thread ==
+      Settings::MergedPlatformUIThread::kMergeAfterLaunch) {
+    engine_ui_task_runner =
+        fml::SubQueueTaskRunner::Create(task_runners.GetUITaskRunner());
+  } else {
+    engine_ui_task_runner = task_runners.GetUITaskRunner();
+  }
+  return TaskRunners(task_runners.GetLabel(),
+                     task_runners.GetPlatformTaskRunner(),
+                     task_runners.GetRasterTaskRunner(), engine_ui_task_runner,
+                     task_runners.GetIOTaskRunner());
+}
+
 Shell::Shell(DartVMRef vm,
              const TaskRunners& task_runners,
              fml::RefPtr<fml::RasterThreadMerger> parent_merger,
@@ -426,7 +444,8 @@ Shell::Shell(DartVMRef vm,
                  resource_cache_limit_calculator,
              const Settings& settings,
              bool is_gpu_disabled)
-    : task_runners_(task_runners),
+    : original_task_runners_(task_runners),
+      task_runners_(CreateEngineTaskRunners(task_runners, settings)),
       parent_raster_thread_merger_(std::move(parent_merger)),
       resource_cache_limit_calculator_(resource_cache_limit_calculator),
       settings_(settings),
@@ -567,15 +586,6 @@ Shell::~Shell() {
         platform_latch.Signal();
       }));
   platform_latch.Wait();
-
-  if (settings_.merged_platform_ui_thread ==
-      Settings::MergedPlatformUIThread::kMergeAfterLaunch) {
-    // Move the UI task runner back to its original thread to enable shutdown of
-    // that thread.
-    fml::MessageLoopTaskQueues::GetInstance()->Unmerge(
-        task_runners_.GetPlatformTaskRunner()->GetTaskQueueId(),
-        task_runners_.GetUITaskRunner()->GetTaskQueueId());
-  }
 }
 
 std::unique_ptr<Shell> Shell::Spawn(
@@ -591,8 +601,9 @@ std::unique_ptr<Shell> Shell::Spawn(
           .SetIfFalse([&is_gpu_disabled] { is_gpu_disabled = false; })
           .SetIfTrue([&is_gpu_disabled] { is_gpu_disabled = true; }));
   std::unique_ptr<Shell> result = CreateWithSnapshot(
-      PlatformData{}, task_runners_, rasterizer_->GetRasterThreadMerger(),
-      io_manager_, resource_cache_limit_calculator_, GetSettings(), vm_,
+      PlatformData{}, original_task_runners_,
+      rasterizer_->GetRasterThreadMerger(), io_manager_,
+      resource_cache_limit_calculator_, GetSettings(), vm_,
       vm_->GetVMData()->GetIsolateSnapshot(), on_create_platform_view,
       on_create_rasterizer,
       [engine = this->engine_.get(), initial_route](
@@ -608,6 +619,7 @@ std::unique_ptr<Shell> Shell::Spawn(
           impeller::RuntimeStageBackend runtime_stage_backend) {
         return engine->Spawn(
             /*delegate=*/delegate,
+            /*task_runners=*/task_runners,
             /*dispatcher_maker=*/dispatcher_maker,
             /*settings=*/settings,
             /*animator=*/std::move(animator),
