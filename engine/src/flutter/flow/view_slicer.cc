@@ -10,13 +10,13 @@
 
 namespace flutter {
 
-std::unordered_map<int64_t, SkRect> SliceViews(
+std::unordered_map<int64_t, std::vector<SkRect>> SliceViews(
     DlCanvas* background_canvas,
     const std::vector<int64_t>& composition_order,
     const std::unordered_map<int64_t, std::unique_ptr<EmbedderViewSlice>>&
         slices,
     const std::unordered_map<int64_t, SkRect>& view_rects) {
-  std::unordered_map<int64_t, SkRect> overlay_layers;
+  std::unordered_map<int64_t, std::vector<SkRect>> overlay_layers;
 
   auto current_frame_view_count = composition_order.size();
 
@@ -32,8 +32,6 @@ std::unordered_map<int64_t, SkRect> SliceViews(
     }
 
     slice->end_recording();
-
-    DlRect full_joined_rect;
 
     // Determinate if Flutter UI intersects with any of the previous
     // platform views stacked by z position.
@@ -91,7 +89,6 @@ std::unordered_map<int64_t, SkRect> SliceViews(
         partial_joined_rect = partial_joined_rect.Union(DlRect::Make(rect));
       }
 
-      // Get the intersection rect with the `current_view_rect`,
       if (partial_joined_rect.IntersectsWithRect(
               rounded_out_platform_view_rect)) {
         // Join the `partial_joined_rect` into `full_joined_rect` to get the
@@ -103,17 +100,11 @@ std::unordered_map<int64_t, SkRect> SliceViews(
         // penalty for not checking the return value of the intersect method
         // would be to join a non-overlapping rectangle into the overlay
         // bounds - if the above implementation ever changes - so we check it.
-        full_joined_rect = full_joined_rect.Union(partial_joined_rect);
+        overlay_layers[view_id].push_back(ToSkRect(partial_joined_rect));
+        background_canvas->ClipRect(partial_joined_rect, DlClipOp::kDifference);
       }
     }
 
-    if (!full_joined_rect.IsEmpty()) {
-      overlay_layers.insert({view_id, ToSkRect(full_joined_rect)});
-
-      // Clip the background canvas, so it doesn't contain any of the pixels
-      // drawn on the overlay layer.
-      background_canvas->ClipRect(full_joined_rect, DlClipOp::kDifference);
-    }
     slice->render_into(background_canvas);
   }
 

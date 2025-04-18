@@ -13,7 +13,7 @@ namespace flutter {
 
 /// @brief Compute the required overlay layers and clip the view slices
 ///        according to the size and position of the platform views.
-std::unordered_map<int64_t, SkRect> SliceViews(
+std::unordered_map<int64_t, std::vector<SkRect>> SliceViews(
     DlCanvas* background_canvas,
     const std::vector<int64_t>& composition_order,
     const std::unordered_map<int64_t, std::unique_ptr<EmbedderViewSlice>>&

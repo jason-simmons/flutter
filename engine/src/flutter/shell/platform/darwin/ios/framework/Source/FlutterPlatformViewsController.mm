@@ -27,7 +27,7 @@ struct LayerData {
   int64_t overlay_id;
   std::shared_ptr<flutter::OverlayLayer> layer;
 };
-using LayersMap = std::unordered_map<int64_t, LayerData>;
+using LayersMap = std::unordered_map<int64_t, std::vector<LayerData>>;
 
 /// Each of the following structs stores part of the platform view hierarchy according to its
 /// ID.
@@ -684,16 +684,17 @@ static CGRect GetCGRectFromDlRect(const DlRect& clipDlRect) {
     viewRects[viewId] = self.currentCompositionParams[viewId].finalBoundingRect();
   }
 
-  std::unordered_map<int64_t, SkRect> overlayLayers =
+  std::unordered_map<int64_t, std::vector<SkRect>> overlayLayers =
       SliceViews(background_frame->Canvas(), self.compositionOrder, self.slices, viewRects);
 
   size_t requiredOverlayLayers = 0;
   for (int64_t viewId : self.compositionOrder) {
-    std::unordered_map<int64_t, SkRect>::const_iterator overlay = overlayLayers.find(viewId);
+    std::unordered_map<int64_t, std::vector<SkRect>>::const_iterator overlay =
+        overlayLayers.find(viewId);
     if (overlay == overlayLayers.end()) {
       continue;
     }
-    requiredOverlayLayers++;
+    requiredOverlayLayers += overlay->second.size();
   }
 
   // If there are not sufficient overlay layers, we must construct them on the platform
@@ -703,42 +704,45 @@ static CGRect GetCGRectFromDlRect(const DlRect& clipDlRect) {
 
   int64_t overlayId = 0;
   for (int64_t viewId : self.compositionOrder) {
-    std::unordered_map<int64_t, SkRect>::const_iterator overlay = overlayLayers.find(viewId);
+    std::unordered_map<int64_t, std::vector<SkRect>>::const_iterator overlay =
+        overlayLayers.find(viewId);
     if (overlay == overlayLayers.end()) {
       continue;
     }
-    std::shared_ptr<flutter::OverlayLayer> layer = self.nextLayerInPool;
-    if (!layer) {
-      continue;
+    for (SkRect overlay_rect : overlay->second) {
+      std::shared_ptr<flutter::OverlayLayer> layer = self.nextLayerInPool;
+      if (!layer) {
+        continue;
+      }
+
+      std::unique_ptr<flutter::SurfaceFrame> frame = layer->surface->AcquireFrame(self.frameSize);
+      // If frame is null, AcquireFrame already printed out an error message.
+      if (!frame) {
+        continue;
+      }
+      flutter::DlCanvas* overlayCanvas = frame->Canvas();
+      int restoreCount = overlayCanvas->GetSaveCount();
+      overlayCanvas->Save();
+      overlayCanvas->ClipRect(flutter::ToDlRect(overlay_rect));
+      overlayCanvas->Clear(flutter::DlColor::kTransparent());
+      self.slices[viewId]->render_into(overlayCanvas);
+      overlayCanvas->RestoreToCount(restoreCount);
+
+      // This flutter view is never the last in a frame, since we always submit the
+      // underlay view last.
+      frame->set_submit_info({.frame_boundary = false, .present_with_transaction = true});
+      layer->did_submit_last_frame = frame->Encode();
+
+      didEncode &= layer->did_submit_last_frame;
+      platformViewLayers[viewId].push_back(LayerData{
+          .rect = overlay_rect,     //
+          .view_id = viewId,        //
+          .overlay_id = overlayId,  //
+          .layer = layer            //
+      });
+      surfaceFrames.push_back(std::move(frame));
+      overlayId++;
     }
-
-    std::unique_ptr<flutter::SurfaceFrame> frame = layer->surface->AcquireFrame(self.frameSize);
-    // If frame is null, AcquireFrame already printed out an error message.
-    if (!frame) {
-      continue;
-    }
-    flutter::DlCanvas* overlayCanvas = frame->Canvas();
-    int restoreCount = overlayCanvas->GetSaveCount();
-    overlayCanvas->Save();
-    overlayCanvas->ClipRect(flutter::ToDlRect(overlay->second));
-    overlayCanvas->Clear(flutter::DlColor::kTransparent());
-    self.slices[viewId]->render_into(overlayCanvas);
-    overlayCanvas->RestoreToCount(restoreCount);
-
-    // This flutter view is never the last in a frame, since we always submit the
-    // underlay view last.
-    frame->set_submit_info({.frame_boundary = false, .present_with_transaction = true});
-    layer->did_submit_last_frame = frame->Encode();
-
-    didEncode &= layer->did_submit_last_frame;
-    platformViewLayers[viewId] = LayerData{
-        .rect = overlay->second,  //
-        .view_id = viewId,        //
-        .overlay_id = overlayId,  //
-        .layer = layer            //
-    };
-    surfaceFrames.push_back(std::move(frame));
-    overlayId++;
   }
 
   auto previousSubmitInfo = background_frame->submit_info();
@@ -816,12 +820,14 @@ static CGRect GetCGRectFromDlRect(const DlRect& clipDlRect) {
   [CATransaction begin];
 
   // Configure Flutter overlay views.
-  for (const auto& [viewId, layerData] : platformViewLayers) {
-    layerData.layer->UpdateViewState(self.flutterView,     //
-                                     layerData.rect,       //
-                                     layerData.view_id,    //
-                                     layerData.overlay_id  //
-    );
+  for (const auto& [viewId, layerDataList] : platformViewLayers) {
+    for (const auto& layerData : layerDataList) {
+      layerData.layer->UpdateViewState(self.flutterView,     //
+                                       layerData.rect,       //
+                                       layerData.view_id,    //
+                                       layerData.overlay_id  //
+      );
+    }
   }
 
   // Dispose unused Flutter Views.
@@ -865,9 +871,11 @@ static CGRect GetCGRectFromDlRect(const DlRect& clipDlRect) {
 
     auto maybeLayerData = layerMap.find(platformViewId);
     if (maybeLayerData != layerMap.end()) {
-      auto view = maybeLayerData->second.layer->overlay_view_wrapper;
-      if (view != nil) {
-        [desiredPlatformSubviews addObject:view];
+      for (const auto& layerData : maybeLayerData->second) {
+        auto view = layerData.layer->overlay_view_wrapper;
+        if (view != nil) {
+          [desiredPlatformSubviews addObject:view];
+        }
       }
     }
   }
